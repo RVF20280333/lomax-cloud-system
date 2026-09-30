@@ -5,3 +5,5 @@ mini_*.jpg
 salida*.json
 evento*.json
 pruebas/grande.jpg
+
+*.tar
