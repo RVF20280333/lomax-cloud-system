@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lomax - Catálogo</title>
+<style>
+  *{box-sizing:border-box} body{font-family:system-ui,sans-serif;margin:0;background:#f4f6f8;color:#222}
+  header{background:#1f3a5f;color:#fff;padding:14px 24px;display:flex;gap:24px;align-items:center}
+  header a{color:#fff;text-decoration:none;font-weight:600} header h1{font-size:20px;margin:0 auto 0 0}
+  main{max-width:1000px;margin:24px auto;padding:0 16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+  .card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px #0002;cursor:pointer}
+  .card img{width:100%;height:150px;object-fit:cover;background:#ddd}
+  .card div{padding:10px} .cat{color:#666;font-size:13px} .precio{font-weight:700;color:#1f7a4d}
+  form,.box{background:#fff;padding:20px;border-radius:8px;box-shadow:0 1px 4px #0002}
+  label{display:block;margin:10px 0 4px;font-weight:600;font-size:14px}
+  input,select,textarea{width:100%;padding:8px;border:1px solid #bbb;border-radius:4px}
+  button{margin-top:14px;padding:10px 18px;border:0;border-radius:4px;background:#1f3a5f;color:#fff;cursor:pointer}
+  .msg{margin-top:14px;padding:10px;border-radius:4px;white-space:pre-wrap}
+  .ok{background:#d8f3e3} .err{background:#fbdcdc} .info{background:#e1ecfa}
+  .det{display:flex;gap:20px;flex-wrap:wrap} .det img{max-width:300px;border-radius:6px}
+  .badge{padding:2px 8px;border-radius:10px;background:#ddd;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Lomax SA</h1>
+  <a href="#/catalogo">Catálogo</a>
+  <a href="#/registro">Registrar producto</a>
+</header>
+<main id="app"></main>
+
+<script>
+const API = "/api";
+const app = document.getElementById("app");
+const ATRIBUTOS = {
+  Teclados: [["conexion","Conexión","text"],["distribucion","Distribución","text"]],
+  Monitores: [["pulgadas","Pulgadas","number"],["resolucion","Resolución","text"]],
+  Mouses: [["conexion","Conexión","text"],["dpi","DPI","number"]],
+};
+let categorias = [];
+let ultimo = { pid: null };
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function api(path, opts) {
+  const r = await fetch(API + path, opts);
+  let body = null;
+  try { body = await r.json(); } catch (e) {}
+  return { status: r.status, body, instancia: r.headers.get("X-Instance-Id") };
+}
+function errTxt(r) {
+  const b = r.body || {};
+  const e = Array.isArray(b.error) ? b.error.map(x => x.campo + ": " + x.mensaje).join("\n") : b.error;
+  return `HTTP ${r.status} | paso: ${b.paso || "?"}\n${e || "Error de conexión"}`;
+}
+
+async function catalogo() {
+  app.innerHTML = "<h2>Catálogo</h2><p>Cargando...</p>";
+  const r = await api("/productos");
+  if (r.status !== 200) { app.innerHTML = `<div class="msg err">${esc(errTxt(r))}</div>`; return; }
+  app.innerHTML = `<h2>Catálogo (${r.body.length} productos)</h2><div class="grid">` +
+    r.body.map(p => `<div class="card" onclick="location.hash='#/detalle/${p.producto_id}'">
+      <img src="${API}/productos/${p.producto_id}/imagen" alt="${esc(p.nombre)}">
+      <div><b>${esc(p.nombre)}</b><br><span class="cat">${esc(p.categoria)}</span><br>
+      <span class="precio">$ ${Number(p.precio).toFixed(2)}</span></div></div>`).join("") + "</div>";
+}
+
+async function detalle(id) {
+  const r = await api("/productos/" + id);
+  if (r.status !== 200) { app.innerHTML = `<div class="msg err">${esc(errTxt(r))}</div>`; return; }
+  const p = r.body;
+  const attrs = Object.entries(p.atributos || {}).map(([k, v]) => `<li><b>${esc(k)}:</b> ${esc(v)}</li>`).join("");
+  app.innerHTML = `<div class="box"><a href="#/catalogo">← Volver</a><div class="det">
+    <img src="${API}/productos/${id}/imagen" alt="">
+    <div><h2>${esc(p.nombre)}</h2>
+    <p><span class="badge">${esc(p.estado)}</span> ID: <b>${p.producto_id}</b> | Código: ${esc(p.codigo)}</p>
+    <p class="cat">${esc(p.categoria)}</p><p class="precio">$ ${Number(p.precio).toFixed(2)}</p>
+    <p>${esc(p.descripcion)}</p><h3>Atributos</h3><ul>${attrs}</ul>
+    <small>Atendido por: ${esc(r.instancia)}</small></div></div></div>`;
+}
+
+async function registro() {
+  if (!categorias.length) { const c = await api("/categorias"); categorias = c.body || []; }
+  app.innerHTML = `<form id="f"><h2>Registrar producto</h2>
+    <label>Código</label><input id="codigo" required>
+    <label>Nombre</label><input id="nombre" required>
+    <label>Descripción</label><textarea id="descripcion" required></textarea>
+    <label>Precio</label><input id="precio" type="number" step="0.01" min="0" required>
+    <label>Categoría</label><select id="cat">${categorias.map(c => `<option value="${c.categoria_id}" data-n="${esc(c.nombre)}">${esc(c.nombre)}</option>`).join("")}</select>
+    <div id="attrs"></div>
+    <label>Fotografía (JPEG/PNG, máx 5 MB)</label><input id="foto" type="file" accept="image/jpeg,image/png" required>
+    <button type="submit">Registrar</button> <button type="button" id="retry" style="display:none">Reintentar imagen</button>
+    <div id="estado"></div></form>`;
+  const pintarAttrs = () => {
+    const n = document.getElementById("cat").selectedOptions[0].dataset.n;
+    document.getElementById("attrs").innerHTML = (ATRIBUTOS[n] || []).map(([k, l, t]) =>
+      `<label>${l}</label><input data-attr="${k}" type="${t}" required>`).join("");
+  };
+  document.getElementById("cat").onchange = pintarAttrs; pintarAttrs();
+  document.getElementById("f").onsubmit = enviar;
+  document.getElementById("retry").onclick = subirImagen;
+}
+
+const estado = (cls, t) => document.getElementById("estado").innerHTML = `<div class="msg ${cls}">${esc(t)}</div>`;
+
+async function enviar(ev) {
+  ev.preventDefault();
+  const foto = document.getElementById("foto").files[0];
+  if (foto.size > 5 * 1024 * 1024) return estado("err", "La imagen supera 5 MB");
+  const atributos = {};
+  document.querySelectorAll("[data-attr]").forEach(i => atributos[i.dataset.attr] = i.type === "number" ? Number(i.value) : i.value);
+  const body = { codigo: codigo.value, nombre: nombre.value, descripcion: descripcion.value,
+                 precio: precio.value, categoria_id: Number(cat.value), atributos };
+  estado("info", "Registrando producto...");
+  const r = await api("/productos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (r.status !== 201) return estado("err", errTxt(r));
+  ultimo.pid = r.body.producto_id;
+  estado("info", `Producto ${ultimo.pid} creado (PENDIENTE). Subiendo imagen...`);
+  await subirImagen();
+}
+
+async function subirImagen() {
+  const foto = document.getElementById("foto").files[0];
+  const fd = new FormData(); fd.append("file", foto);
+  const r = await api(`/productos/${ultimo.pid}/imagen`, { method: "POST", body: fd });
+  if (r.status === 200) {
+    document.getElementById("retry").style.display = "none";
+    estado("ok", `PUBLICADO. producto_id=${ultimo.pid} (HTTP 200, instancia ${r.instancia})`);
+    setTimeout(() => location.hash = "#/detalle/" + ultimo.pid, 1500);
+  } else {
+    document.getElementById("retry").style.display = "inline-block";
+    estado("err", errTxt(r) + `\n\nProducto ${ultimo.pid} sigue PENDIENTE. Puedes reintentar.`);
+  }
+}
+
+function router() {
+  const h = location.hash || "#/catalogo";
+  if (h.startsWith("#/detalle/")) detalle(h.split("/")[2]);
+  else if (h === "#/registro") registro();
+  else catalogo();
+}
+window.addEventListener("hashchange", router);
+router();
+</script>
+</body>
+</html>

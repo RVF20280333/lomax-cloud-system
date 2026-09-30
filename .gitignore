@@ -1,0 +1,7 @@
+lambda/package/
+lambda/function.zip
+*.json.bak
+mini_*.jpg
+salida*.json
+evento*.json
+pruebas/grande.jpg

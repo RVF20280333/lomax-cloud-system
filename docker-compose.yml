@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: lomax-postgres
+    environment:
+      POSTGRES_USER: lomax
+      POSTGRES_PASSWORD: lomax123
+      POSTGRES_DB: lomaxdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - lomax-net
+      
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres
+      DB_USER: lomax
+      DB_PASSWORD: lomax123
+      DB_NAME: lomaxdb
+      AWS_ENDPOINT_URL: http://localstack:4566
+    depends_on:
+      - postgres
+      - localstack
+    networks:
+      - lomax-net
+  frontend:
+    build: ./frontend
+    networks:
+      - lomax-net
+
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - lomax-net      
+  registry:
+    image: registry:2
+    container_name: lomax-registry
+    ports:
+      - "5000:5000"
+    volumes:
+      - registrydata:/var/lib/registry
+    networks:
+      - lomax-net
+      
+  localstack:
+    image: localstack/localstack:3.8.0
+    container_name: lomas-proyecto-localstack-1
+    ports:
+      - "4567:4566"
+    environment:
+      - AWS_DEFAULT_REGION=us-east-1
+      - SERVICES=s3,dynamodb,lambda
+      - LAMBDA_DOCKER_NETWORK=prueba_lomax-net
+    volumes:
+      - ./localstack/init/ready.d:/etc/localstack/init/ready.d
+      - ./lambda:/lambda
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - lomax-net
+
+volumes:
+  pgdata:
+  registrydata:
+
+networks:
+  lomax-net:
+  
